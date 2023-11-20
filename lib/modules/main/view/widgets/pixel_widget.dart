@@ -28,87 +28,127 @@ class _PixelWidgetState extends State<PixelWidget> {
 
   bool isHovered = false;
   bool isSelectingColor = false;
+  bool isEditing = false;
 
-  late final OverlayEntry _overlayEntry;
+  late final OverlayEntry _colorOverlayEntry;
+  late final OverlayEntry _editorOverlayEntry;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _overlayEntry = OverlayEntry(
+      _editorOverlayEntry = OverlayEntry(builder: (_) {
+        return ValueListenableBuilder(
+            valueListenable: widget.canvasTransform,
+            builder: (context, transform, _) {
+              return TapRegion(
+                onTapOutside: (_) {
+                  setState(() => _editorOverlayEntry.remove());
+                },
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Stack(
+                    children: [
+                      Transform.translate(
+                        offset: MatrixUtils.transformPoint(
+                          transform,
+                          Offset(
+                            widget.pixelSize *
+                                    (widget.index % widget.pixelWidth) +
+                                widget.pixelSize,
+                            widget.pixelSize *
+                                (widget.index ~/ widget.pixelWidth),
+                          ),
+                        ),
+                        child: SizedBox(
+                          width: 64,
+                          height: 64,
+                          child: Card(
+                              color: color,
+                              margin: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)
+                                    .copyWith(topLeft: Radius.zero),
+                              ),
+                              child: buildPixelEditor(context)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            });
+      });
+      _colorOverlayEntry = OverlayEntry(
         builder: (_) {
           return ValueListenableBuilder(
               valueListenable: widget.canvasTransform,
               builder: (context, transform, _) {
-                return TapRegion(
-                  onTapOutside: (_) {
-                    setState(() => _overlayEntry.remove());
-                  },
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: Stack(
-                      children: [
-                        Transform.translate(
-                          offset: MatrixUtils.transformPoint(
-                            transform,
-                            Offset(
-                              widget.pixelSize *
-                                      (widget.index % widget.pixelWidth) +
-                                  widget.pixelSize,
-                              widget.pixelSize *
-                                  (widget.index ~/ widget.pixelWidth),
-                            ),
+                return SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Stack(
+                    children: [
+                      Transform.translate(
+                        offset: MatrixUtils.transformPoint(
+                          transform,
+                          Offset(
+                            widget.pixelSize *
+                                    (widget.index % widget.pixelWidth) +
+                                widget.pixelSize,
+                            widget.pixelSize *
+                                (widget.index ~/ widget.pixelWidth),
                           ),
-                          child: SizedBox(
-                            width: 480,
-                            height: 800,
-                            child: SingleChildScrollView(
-                              child: Card(
-                                margin: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)
-                                      .copyWith(topLeft: Radius.zero),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    CloseButton(
-                                      onPressed: () {
-                                        _overlayEntry.remove();
-                                      },
-                                    ),
-                                    ColorPicker(
-                                      color: color,
-                                      showColorCode: true,
-                                      pickersEnabled: const {
-                                        ColorPickerType.both: true,
-                                        ColorPickerType.primary: true,
-                                        ColorPickerType.accent: true,
-                                        ColorPickerType.wheel: true,
-                                      },
-                                      onColorChanged: (c) =>
-                                          setState(() => color = c),
-                                    ),
-                                  ],
-                                ),
+                        ),
+                        child: SizedBox(
+                          width: 480,
+                          height: 800,
+                          child: SingleChildScrollView(
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)
+                                    .copyWith(topLeft: Radius.zero),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CloseButton(
+                                    onPressed: () {
+                                      _colorOverlayEntry.remove();
+                                    },
+                                  ),
+                                  ColorPicker(
+                                    color: color,
+                                    showColorCode: true,
+                                    pickersEnabled: const {
+                                      ColorPickerType.both: true,
+                                      ColorPickerType.primary: true,
+                                      ColorPickerType.accent: true,
+                                      ColorPickerType.wheel: true,
+                                    },
+                                    onColorChanged: (c) =>
+                                        setState(() => color = c),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 );
               });
         },
       );
 
-      _overlayEntry.addListener(() {
+      _colorOverlayEntry.addListener(() {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             setState(() {
-              isSelectingColor = _overlayEntry.mounted;
+              isSelectingColor = _colorOverlayEntry.mounted;
             });
           }
         });
@@ -143,7 +183,7 @@ class _PixelWidgetState extends State<PixelWidget> {
                 ),
               ),
             ),
-            if (!isHovered && color == Colors.transparent)
+            if (color == Colors.transparent)
               Center(
                 child: Container(
                   width: widget.pixelSize - 8,
@@ -151,10 +191,18 @@ class _PixelWidgetState extends State<PixelWidget> {
                   decoration: const BoxDecoration(
                       color: Colors.white30, shape: BoxShape.circle),
                 ),
-              )
-            else if (isHovered && color == Colors.transparent)
+              ),
+            if (color == Colors.transparent)
               Center(
                 child: IconButton(
+                  style: ButtonStyle(
+                    iconColor: MaterialStateProperty.resolveWith((states) {
+                      if (states.contains(MaterialState.hovered)) {
+                        return Colors.black;
+                      }
+                      return Colors.transparent;
+                    }),
+                  ),
                   mouseCursor: SystemMouseCursors.basic,
                   onPressed: () => setState(
                     () {
@@ -164,94 +212,108 @@ class _PixelWidgetState extends State<PixelWidget> {
                   icon: const Icon(Icons.add),
                 ),
               )
-            else if (isHovered && color != Colors.transparent)
+            else if (color != Colors.transparent)
               Positioned.fill(
                 top: 2,
                 left: 2,
                 right: 2,
                 bottom: 2,
-                child: GridView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2),
-                  children: [
-                    (
-                      icon: const Icon(Icons.clear_outlined),
-                      onPressed: () => setState(() {
-                            color = Colors.transparent;
-                            shape = Shape.square;
-                            rotation = 0;
-                          })
-                    ),
-                    (
-                      icon: const Icon(Icons.rotate_right),
-                      onPressed: () => setState(() {
-                            rotation = (rotation + 1) % 4;
-                          })
-                    ),
-                    (
-                      icon: const Icon(Icons.water_drop_outlined),
-                      onPressed: () {
-                        if (isSelectingColor) {
-                          _overlayEntry.remove();
-                        } else {
-                          Overlay.of(context).insert(
-                            _overlayEntry,
-                          );
-                        }
-                      },
-                    ),
-                    (
-                      icon: switch (shape) {
-                        Shape.square => buildRadiusIcon(),
-                        Shape.borderRadius => buildDIcon(),
-                        Shape.dShape => buildCircleIcon(),
-                        Shape.circle => buildSquareIcon(),
-                      },
-                      onPressed: () => setState(() {
-                            shape = switch (shape) {
-                              Shape.square => Shape.borderRadius,
-                              Shape.borderRadius => Shape.dShape,
-                              Shape.dShape => Shape.circle,
-                              Shape.circle => Shape.square,
-                            };
-                          })
-                    ),
-                  ]
-                      .map((e) => IconButton(
-                            mouseCursor: SystemMouseCursors.basic,
-                            style: ButtonStyle(
-                              padding: const MaterialStatePropertyAll(
-                                  EdgeInsets.zero),
-                              iconColor:
-                                  MaterialStateProperty.resolveWith((states) {
-                                if (states.contains(MaterialState.hovered)) {
-                                  return color.computeLuminance() > .5
-                                      ? Colors.black
-                                      : Colors.white;
-                                }
-                                return color.computeLuminance() > .5
-                                    ? Colors.black54
-                                    : Colors.white70;
-                              }),
-                              overlayColor:
-                                  MaterialStateProperty.resolveWith((states) {
-                                if (states.contains(MaterialState.hovered)) {
-                                  return Colors.white.withOpacity(.25);
-                                }
-                                return Colors.transparent;
-                              }),
-                            ),
-                            iconSize: widget.pixelSize / 4,
-                            icon: e.icon,
-                            onPressed: e.onPressed,
-                          ))
-                      .toList(),
-                ),
+                child: IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () {
+                      if (_editorOverlayEntry.mounted) {
+                        setState(() {
+                          _editorOverlayEntry.remove();
+                        });
+                      } else {
+                        setState(() {
+                          Overlay.of(context).insert(_editorOverlayEntry);
+                        });
+                      }
+                    }),
               ),
           ],
         ),
       ),
+    );
+  }
+
+  GridView buildPixelEditor(BuildContext context) {
+    return GridView(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate:
+          const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2),
+      children: [
+        (
+          icon: const Icon(Icons.clear_outlined),
+          onPressed: () => setState(() {
+                color = Colors.transparent;
+                shape = Shape.square;
+                rotation = 0;
+              })
+        ),
+        (
+          icon: const Icon(Icons.rotate_right),
+          onPressed: () => setState(() {
+                rotation = (rotation + 1) % 4;
+              })
+        ),
+        (
+          icon: const Icon(Icons.water_drop_outlined),
+          onPressed: () {
+            if (isSelectingColor) {
+              _colorOverlayEntry.remove();
+            } else {
+              _editorOverlayEntry.remove();
+              Overlay.of(context).insert(
+                _colorOverlayEntry,
+              );
+            }
+          },
+        ),
+        (
+          icon: switch (shape) {
+            Shape.square => buildRadiusIcon(),
+            Shape.borderRadius => buildDIcon(),
+            Shape.dShape => buildCircleIcon(),
+            Shape.circle => buildSquareIcon(),
+          },
+          onPressed: () => setState(() {
+                shape = switch (shape) {
+                  Shape.square => Shape.borderRadius,
+                  Shape.borderRadius => Shape.dShape,
+                  Shape.dShape => Shape.circle,
+                  Shape.circle => Shape.square,
+                };
+              })
+        ),
+      ]
+          .map((e) => IconButton(
+                mouseCursor: SystemMouseCursors.basic,
+                style: ButtonStyle(
+                  padding: const MaterialStatePropertyAll(EdgeInsets.zero),
+                  iconColor: MaterialStateProperty.resolveWith((states) {
+                    if (states.contains(MaterialState.hovered)) {
+                      return color.computeLuminance() > .5
+                          ? Colors.black
+                          : Colors.white;
+                    }
+                    return color.computeLuminance() > .5
+                        ? Colors.black54
+                        : Colors.white70;
+                  }),
+                  overlayColor: MaterialStateProperty.resolveWith((states) {
+                    if (states.contains(MaterialState.hovered)) {
+                      return Colors.white.withOpacity(.25);
+                    }
+                    return Colors.transparent;
+                  }),
+                ),
+                iconSize: widget.pixelSize / 4,
+                icon: e.icon,
+                onPressed: e.onPressed,
+              ))
+          .toList(),
     );
   }
 
